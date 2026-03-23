@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,16 +31,16 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	logger, closeFunc, err := newLogger(os.Getenv("LINKO_LOG_FILE"))
 	defer func() {
 		if err := closeFunc(); err != nil {
-			log.Println(err.Error())
+			slog.Error(err.Error())
 		}
 	}()
 	if err != nil {
-		log.Printf("failed to initialize logger: %v\n", err)
+		slog.Error("failed to initialize logger: %v\n", err)
 	}
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Printf("failed to create store: %v\n", err)
+		logger.Info(fmt.Sprintf("failed to create store: %v\n", err))
 		return 1
 	}
 
@@ -55,20 +55,20 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Printf("failed to shutdown server: %v\n", err)
+		logger.Info(fmt.Sprintf("failed to shutdown server: %v\n", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Printf("server error: %v\n", serverErr)
+		logger.Info(fmt.Sprintf("server error: %v\n", serverErr))
 		return 1
 	}
 	return 0
 }
 
-func newLogger(logFileName string) (logger *log.Logger, closeFunc func() error, err error) {
+func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error, err error) {
 	noop := func() error { return nil }
 	if logFileName == "" {
-		return log.New(os.Stderr, "", log.LstdFlags), noop, nil
+		return slog.New(slog.NewJSONHandler(os.Stderr, nil)), noop, nil
 	}
 
 	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -78,6 +78,6 @@ func newLogger(logFileName string) (logger *log.Logger, closeFunc func() error, 
 
 	bufferedFile := bufio.NewWriterSize(logFile, 8192)
 	writer := io.MultiWriter(os.Stderr, bufferedFile)
-	logger = log.New(writer, "", log.LstdFlags)
+	logger = slog.New(slog.NewJSONHandler(writer, nil))
 	return logger, func() error { return bufferedFile.Flush() }, nil
 }
