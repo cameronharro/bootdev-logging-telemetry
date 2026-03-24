@@ -7,10 +7,20 @@ import (
 	"os"
 )
 
+func logErrorStack(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "error" {
+		if err, ok := a.Value.Any().(error); ok {
+			return slog.String("error", fmt.Sprintf("%+v", err))
+		}
+	}
+	return a
+}
+
 func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error, err error) {
 	noop := func() error { return nil }
 	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level:       slog.LevelDebug,
+		ReplaceAttr: logErrorStack,
 	})
 	if logFileName == "" {
 		return slog.New(debugHandler), noop, nil
@@ -23,7 +33,8 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 
 	bufferedFile := bufio.NewWriterSize(logFile, 8192)
 	infoHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level:       slog.LevelInfo,
+		ReplaceAttr: logErrorStack,
 	})
 	logger = slog.New(slog.NewMultiHandler(
 		debugHandler,
