@@ -22,7 +22,7 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 	}
 
 	bufferedFile := bufio.NewWriterSize(logFile, 8192)
-	infoHandler := slog.NewTextHandler(logFile, &slog.HandlerOptions{
+	infoHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
 	logger = slog.New(slog.NewMultiHandler(
