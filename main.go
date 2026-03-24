@@ -33,7 +33,10 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		}
 	}()
 	if err != nil {
-		slog.Error("failed to initialize logger: %v\n", err)
+		slog.Error(
+			"failed to initialize logger: %v",
+			slog.String("err", err.Error()),
+		)
 	}
 
 	st, err := store.New(dataDir, logger)
