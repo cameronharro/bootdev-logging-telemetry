@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 
@@ -16,28 +15,37 @@ type stackTracer interface {
 	error
 	StackTrace() pkgerr.StackTrace
 }
+type multiError interface {
+	error
+	Unwrap() []error
+}
 
-func logErrorStack(groups []string, a slog.Attr) slog.Attr {
+func errorAttrs(err error) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.String("message", err.Error()),
+	}
+	attrs = append(attrs, linkoerr.Attrs(err)...)
+	if stackErr, ok := errors.AsType[stackTracer](err); ok {
+		attrs = append(
+			attrs,
+			slog.String("stack_trace", fmt.Sprintf("%+v", stackErr.StackTrace())),
+		)
+	}
+	return attrs
+}
+
+func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "error" {
 		if err, ok := a.Value.Any().(error); ok {
-			log.Println("switching on error type")
-			if stackError, ok := errors.AsType[stackTracer](err); ok {
-				log.Println("stackerr")
-				return slog.GroupAttrs(
-					"error",
-					slog.String("message", stackError.Error()),
-					slog.String("stack_trace", fmt.Sprintf("%+v", stackError.StackTrace())),
-				)
+			if multiErr, ok := errors.AsType[multiError](err); ok {
+				var errAttrs []slog.Attr
+				for i, e := range multiErr.Unwrap() {
+					errAttrs = append(errAttrs, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), errorAttrs(e)...))
+				}
+				return slog.GroupAttrs("errors", errAttrs...)
 			}
-			if attrErr, ok := errors.AsType[*linkoerr.ErrWithAttrs](err); ok {
-				log.Println("attrErr")
-				return slog.GroupAttrs(
-					"error",
-					attrErr.Attrs()...,
-				)
-			}
-			log.Println("default")
-			return slog.String("error", fmt.Sprintf("%+v", err))
+
+			return slog.GroupAttrs("error", errorAttrs(err)...)
 		}
 	}
 	return a
@@ -47,7 +55,7 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 	noop := func() error { return nil }
 	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level:       slog.LevelDebug,
-		ReplaceAttr: logErrorStack,
+		ReplaceAttr: replaceAttr,
 	})
 	if logFileName == "" {
 		return slog.New(debugHandler), noop, nil
@@ -61,7 +69,7 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 	bufferedFile := bufio.NewWriterSize(logFile, 8192)
 	infoHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
 		Level:       slog.LevelInfo,
-		ReplaceAttr: logErrorStack,
+		ReplaceAttr: replaceAttr,
 	})
 	logger = slog.New(slog.NewMultiHandler(
 		debugHandler,
