@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -40,7 +38,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Info(fmt.Sprintf("failed to create store: %v\n", err))
+		logger.Error(fmt.Sprintf("failed to create store: %v\n", err))
 		return 1
 	}
 
@@ -55,29 +53,12 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Info(fmt.Sprintf("failed to shutdown server: %v\n", err))
+		logger.Error(fmt.Sprintf("failed to shutdown server: %v", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Info(fmt.Sprintf("server error: %v\n", serverErr))
+		logger.Error(fmt.Sprintf("server error: %v\n", serverErr))
 		return 1
 	}
 	return 0
-}
-
-func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error, err error) {
-	noop := func() error { return nil }
-	if logFileName == "" {
-		return slog.New(slog.NewJSONHandler(os.Stderr, nil)), noop, nil
-	}
-
-	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, noop, fmt.Errorf("failed to open log file: %w", err)
-	}
-
-	bufferedFile := bufio.NewWriterSize(logFile, 8192)
-	writer := io.MultiWriter(os.Stderr, bufferedFile)
-	logger = slog.New(slog.NewJSONHandler(writer, nil))
-	return logger, func() error { return bufferedFile.Flush() }, nil
 }
