@@ -100,7 +100,10 @@ func (s *server) handlerRedirect(w http.ResponseWriter, r *http.Request) {
 func (s *server) handlerListURLs(w http.ResponseWriter, r *http.Request) {
 	codes, err := s.store.List(r.Context())
 	if err != nil {
-		s.logger.Info(fmt.Sprintf("failed to list URLs: %v\n", err))
+		s.logger.Error(
+			"failed to list URLs",
+			slog.Any("error", err),
+		)
 		http.Error(w, "failed to list URLs", http.StatusInternalServerError)
 		return
 	}

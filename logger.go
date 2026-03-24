@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 
+	"boot.dev/linko/internal/linkoerr"
 	pkgerr "github.com/pkg/errors"
 )
 
@@ -18,13 +20,23 @@ type stackTracer interface {
 func logErrorStack(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "error" {
 		if err, ok := a.Value.Any().(error); ok {
-			if stackErr, ok := errors.AsType[stackTracer](err); ok {
+			log.Println("switching on error type")
+			if stackError, ok := errors.AsType[stackTracer](err); ok {
+				log.Println("stackerr")
 				return slog.GroupAttrs(
 					"error",
-					slog.String("message", stackErr.Error()),
-					slog.String("stack_trace", fmt.Sprintf("%+v", stackErr.StackTrace())),
+					slog.String("message", stackError.Error()),
+					slog.String("stack_trace", fmt.Sprintf("%+v", stackError.StackTrace())),
 				)
 			}
+			if attrErr, ok := errors.AsType[*linkoerr.ErrWithAttrs](err); ok {
+				log.Println("attrErr")
+				return slog.GroupAttrs(
+					"error",
+					attrErr.Attrs()...,
+				)
+			}
+			log.Println("default")
 			return slog.String("error", fmt.Sprintf("%+v", err))
 		}
 	}
