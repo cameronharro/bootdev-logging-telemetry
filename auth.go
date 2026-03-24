@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
@@ -34,7 +35,11 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 		}
 		ok, err := s.validatePassword(password, stored)
 		if err != nil {
-			s.logger.Info(fmt.Sprintf("error validating password for user: %s, error: %v\n", username, err))
+			s.logger.Info(
+				"error validating password",
+				slog.String("user", username),
+				slog.String("error", err.Error()),
+			)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
