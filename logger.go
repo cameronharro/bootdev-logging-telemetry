@@ -2,14 +2,29 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+
+	pkgerr "github.com/pkg/errors"
 )
+
+type stackTracer interface {
+	error
+	StackTrace() pkgerr.StackTrace
+}
 
 func logErrorStack(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "error" {
 		if err, ok := a.Value.Any().(error); ok {
+			if stackErr, ok := errors.AsType[stackTracer](err); ok {
+				return slog.GroupAttrs(
+					"error",
+					slog.String("message", stackErr.Error()),
+					slog.String("stack_trace", fmt.Sprintf("%+v", stackErr.StackTrace())),
+				)
+			}
 			return slog.String("error", fmt.Sprintf("%+v", err))
 		}
 	}
