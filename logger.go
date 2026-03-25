@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 
+	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/linkoerr"
 	pkgerr "github.com/pkg/errors"
 )
@@ -75,5 +76,9 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 		debugHandler,
 		infoHandler,
 	))
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),
+		slog.String("build_time", build.BuildTime),
+	)
 	return logger, func() error { return bufferedFile.Flush() }, nil
 }
