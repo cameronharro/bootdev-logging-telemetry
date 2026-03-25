@@ -36,8 +36,8 @@ func (s *server) handlerLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handlerShortenLink(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(UserContextKey).(string)
-	if !ok || user == "" {
+	logCtx, _ := r.Context().Value(logContextKey).(*LogContext)
+	if logCtx == nil || logCtx.Username == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

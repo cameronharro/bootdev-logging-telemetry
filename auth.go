@@ -1,17 +1,12 @@
 package main
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
 	pkgerr "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
-
-type contextKey string
-
-const UserContextKey contextKey = "user"
 
 var allowedUsers = map[string]string{
 	"frodo":   "$2a$10$B6O/n6teuCzpuh66jrUAdeaJ3WvXcxRkzpN0x7H.di9G9e/NGb9Me",
@@ -47,7 +42,9 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, username))
+		if logContext, ok := r.Context().Value(logContextKey).(*LogContext); ok && logContext != nil {
+			logContext.Username = username
+		}
 		next.ServeHTTP(w, r)
 	})
 }
