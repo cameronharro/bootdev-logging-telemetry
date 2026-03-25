@@ -79,10 +79,14 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			if logContext.Username != "" {
 				attrs = append(attrs, slog.String("user", logContext.Username))
 			}
+			level := slog.LevelInfo
 			if logContext.Error != nil {
 				attrs = append(attrs, slog.Any("error", logContext.Error))
+				if spyWriter.statusCode >= 500 {
+					level = slog.LevelError
+				}
 			}
-			logger.LogAttrs(r.Context(), slog.LevelInfo, "Served request", attrs...)
+			logger.LogAttrs(r.Context(), level, "Served request", attrs...)
 		})
 	}
 }
