@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"boot.dev/linko/internal/store"
@@ -51,6 +52,7 @@ const logContextKey contextKey = "log_context"
 
 type LogContext struct {
 	Username string
+	Error    error
 }
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
@@ -75,9 +77,19 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			if logContext.Username != "" {
 				attrs = append(attrs, slog.String("user", logContext.Username))
 			}
+			if logContext.Error != nil {
+				attrs = append(attrs, slog.Any("error", logContext.Error))
+			}
 			logger.LogAttrs(r.Context(), slog.LevelInfo, "Served request", attrs...)
 		})
 	}
+}
+
+func httpError(ctx context.Context, w http.ResponseWriter, err error, status int) {
+	if logCtx, _ := ctx.Value(logContextKey).(*LogContext); logCtx != nil {
+		logCtx.Error = err
+	}
+	http.Error(w, strings.ToLower(err.Error()), status)
 }
 
 type server struct {
