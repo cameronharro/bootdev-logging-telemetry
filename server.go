@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -66,6 +67,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			spyWriter := &spyResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(spyWriter, r)
 			attrs := []slog.Attr{
+				slog.String(request_id_context_key, r.Header.Get(request_id_header_key)),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.String("client_ip", r.RemoteAddr),
@@ -92,6 +94,23 @@ func httpError(ctx context.Context, w http.ResponseWriter, err error, status int
 	http.Error(w, strings.ToLower(err.Error()), status)
 }
 
+const request_id_context_key string = "request_id"
+const request_id_header_key string = "X-Request-ID"
+
+func setRequestIDMW() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestID := r.Header.Get("X-Request-ID")
+			if requestID == "" {
+				requestID = rand.Text()
+				r.Header.Set(request_id_header_key, requestID)
+			}
+			w.Header().Set(request_id_header_key, requestID)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 type server struct {
 	httpServer *http.Server
 	store      store.Store
@@ -104,7 +123,7 @@ func newServer(store store.Store, port int, logger *slog.Logger, cancel context.
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(logger)(mux),
+		Handler: setRequestIDMW()(requestLogger(logger)(mux)),
 	}
 
 	s := &server{
