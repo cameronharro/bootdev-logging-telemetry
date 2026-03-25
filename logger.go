@@ -59,7 +59,7 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 		ReplaceAttr: replaceAttr,
 	})
 	if logFileName == "" {
-		return slog.New(debugHandler), noop, nil
+		return addEnvContext(slog.New(debugHandler)), noop, nil
 	}
 
 	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -76,9 +76,17 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 		debugHandler,
 		infoHandler,
 	))
-	logger = logger.With(
+
+	return addEnvContext(logger), func() error { return bufferedFile.Flush() }, nil
+}
+
+func addEnvContext(logger *slog.Logger) *slog.Logger {
+	env := os.Getenv("ENV")
+	hostname, _ := os.Hostname()
+	return logger.With(
 		slog.String("git_sha", build.GitSHA),
 		slog.String("build_time", build.BuildTime),
+		slog.String("env", env),
+		slog.String("hostname", hostname),
 	)
-	return logger, func() error { return bufferedFile.Flush() }, nil
 }
