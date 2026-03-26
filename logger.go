@@ -23,73 +23,83 @@ type multiError interface {
 	Unwrap() []error
 }
 
-func errorAttrs(err error) []slog.Attr {
-	attrs := []slog.Attr{
-		slog.String("message", err.Error()),
-	}
-	attrs = append(attrs, linkoerr.Attrs(err)...)
-	if stackErr, ok := errors.AsType[stackTracer](err); ok {
-		attrs = append(
-			attrs,
-			slog.String("stack_trace", fmt.Sprintf("%+v", stackErr.StackTrace())),
-		)
-	}
-	return attrs
-}
-
-func replaceAttr(groups []string, a slog.Attr) slog.Attr {
-	if a.Key == "error" {
-		if err, ok := a.Value.Any().(error); ok {
-			if multiErr, ok := errors.AsType[multiError](err); ok {
-				var errAttrs []slog.Attr
-				for i, e := range multiErr.Unwrap() {
-					errAttrs = append(errAttrs, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), errorAttrs(e)...))
-				}
-				return slog.GroupAttrs("errors", errAttrs...)
-			}
-
-			return slog.GroupAttrs("error", errorAttrs(err)...)
-		}
-	}
-	return a
-}
-
 func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error, err error) {
-	noop := func() error { return nil }
-	debugHandler := tint.NewHandler(os.Stderr, &tint.Options{
+	var (
+		handlers []slog.Handler
+		closers  []func() error
+	)
+
+	replaceAttr := func(groups []string, a slog.Attr) slog.Attr {
+		if a.Key == "error" {
+			if err, ok := a.Value.Any().(error); ok {
+				errorAttrs := func(err error) []slog.Attr {
+					attrs := []slog.Attr{
+						slog.String("message", err.Error()),
+					}
+					attrs = append(attrs, linkoerr.Attrs(err)...)
+					if stackErr, ok := errors.AsType[stackTracer](err); ok {
+						attrs = append(
+							attrs,
+							slog.String("stack_trace", fmt.Sprintf("%+v", stackErr.StackTrace())),
+						)
+					}
+					return attrs
+				}
+
+				if multiErr, ok := errors.AsType[multiError](err); ok {
+					var errAttrs []slog.Attr
+					for i, e := range multiErr.Unwrap() {
+						errAttrs = append(errAttrs, slog.GroupAttrs(fmt.Sprintf("error_%d", i+1), errorAttrs(e)...))
+					}
+					return slog.GroupAttrs("errors", errAttrs...)
+				}
+
+				return slog.GroupAttrs("error", errorAttrs(err)...)
+			}
+		}
+		return a
+	}
+
+	handlers = append(handlers, tint.NewHandler(os.Stderr, &tint.Options{
 		Level:       slog.LevelDebug,
 		ReplaceAttr: replaceAttr,
 		NoColor:     !(isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())),
-	})
-	if logFileName == "" {
-		return addEnvContext(slog.New(debugHandler)), noop, nil
+	}))
+
+	if logFileName != "" {
+		logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
+		}
+
+		bufferedFile := bufio.NewWriterSize(logFile, 8192)
+		handlers = append(handlers, slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+			Level:       slog.LevelInfo,
+			ReplaceAttr: replaceAttr,
+		}))
+		closers = append(closers, func() error { return bufferedFile.Flush() })
 	}
 
-	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, noop, fmt.Errorf("failed to open log file: %w", err)
+	addEnvContext := func(logger *slog.Logger) *slog.Logger {
+		env := os.Getenv("ENV")
+		hostname, _ := os.Hostname()
+		return logger.With(
+			slog.String("git_sha", build.GitSHA),
+			slog.String("build_time", build.BuildTime),
+			slog.String("env", env),
+			slog.String("hostname", hostname),
+		)
 	}
 
-	bufferedFile := bufio.NewWriterSize(logFile, 8192)
-	infoHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
-		Level:       slog.LevelInfo,
-		ReplaceAttr: replaceAttr,
-	})
-	logger = slog.New(slog.NewMultiHandler(
-		debugHandler,
-		infoHandler,
-	))
+	logger = addEnvContext(slog.New(slog.NewMultiHandler(handlers...)))
 
-	return addEnvContext(logger), func() error { return bufferedFile.Flush() }, nil
-}
+	closeFunc = func() error {
+		var errs []error
+		for _, closer := range closers {
+			errs = append(errs, closer())
+		}
+		return errors.Join(errs...)
+	}
 
-func addEnvContext(logger *slog.Logger) *slog.Logger {
-	env := os.Getenv("ENV")
-	hostname, _ := os.Hostname()
-	return logger.With(
-		slog.String("git_sha", build.GitSHA),
-		slog.String("build_time", build.BuildTime),
-		slog.String("env", env),
-		slog.String("hostname", hostname),
-	)
+	return logger, closeFunc, nil
 }
