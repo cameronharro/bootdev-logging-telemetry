@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type stackTracer interface {
@@ -67,17 +67,19 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 	}))
 
 	if logFileName != "" {
-		logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
+		fileLogger := &lumberjack.Logger{
+			Filename:   logFileName,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-
-		bufferedFile := bufio.NewWriterSize(logFile, 8192)
-		handlers = append(handlers, slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+		handlers = append(handlers, slog.NewJSONHandler(fileLogger, &slog.HandlerOptions{
 			Level:       slog.LevelInfo,
 			ReplaceAttr: replaceAttr,
 		}))
-		closers = append(closers, func() error { return bufferedFile.Flush() })
+		closers = append(closers, func() error { return fileLogger.Close() })
 	}
 
 	addEnvContext := func(logger *slog.Logger) *slog.Logger {
