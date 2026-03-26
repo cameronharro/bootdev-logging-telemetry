@@ -126,18 +126,16 @@ func httpError(ctx context.Context, w http.ResponseWriter, err error, status int
 const request_id_context_key string = "request_id"
 const request_id_header_key string = "X-Request-ID"
 
-func setRequestIDMW() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			requestID := r.Header.Get("X-Request-ID")
-			if requestID == "" {
-				requestID = rand.Text()
-				r.Header.Set(request_id_header_key, requestID)
-			}
-			w.Header().Set(request_id_header_key, requestID)
-			next.ServeHTTP(w, r)
-		})
-	}
+func setRequestIDMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = rand.Text()
+			r.Header.Set(request_id_header_key, requestID)
+		}
+		w.Header().Set(request_id_header_key, requestID)
+		next.ServeHTTP(w, r)
+	})
 }
 
 type server struct {
@@ -152,7 +150,7 @@ func newServer(store store.Store, port int, logger *slog.Logger, cancel context.
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: setRequestIDMW()(requestLogger(logger)(mux)),
+		Handler: setRequestIDMW(metricsMiddleware(requestLogger(logger)(mux))),
 	}
 
 	s := &server{
