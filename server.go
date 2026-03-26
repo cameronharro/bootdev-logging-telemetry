@@ -66,11 +66,26 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			r.Body = spyReader
 			spyWriter := &spyResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(spyWriter, r)
+
+			redactIP := func(address string) string {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					return address
+				}
+				ip := net.ParseIP(host)
+				if ip.To4() == nil {
+					return address
+				}
+				ipParts := strings.Split(ip.String(), ".")
+				ipParts[len(ipParts)-1] = "x"
+				return strings.Join(ipParts, ".")
+			}
+
 			attrs := []slog.Attr{
 				slog.String(request_id_context_key, r.Header.Get(request_id_header_key)),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("client_ip", r.RemoteAddr),
+				slog.String("client_ip", redactIP(r.RemoteAddr)),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
