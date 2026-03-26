@@ -95,7 +95,16 @@ func httpError(ctx context.Context, w http.ResponseWriter, err error, status int
 	if logCtx, _ := ctx.Value(logContextKey).(*LogContext); logCtx != nil {
 		logCtx.Error = err
 	}
-	http.Error(w, strings.ToLower(err.Error()), status)
+	switch status {
+	case 401:
+		fallthrough
+	case 403:
+		fallthrough
+	case 500:
+		http.Error(w, http.StatusText(status), status)
+	default:
+		http.Error(w, err.Error(), status)
+	}
 }
 
 const request_id_context_key string = "request_id"

@@ -33,10 +33,11 @@ func newLogger(logFileName string) (logger *slog.Logger, closeFunc func() error,
 		if a.Key == "error" {
 			if err, ok := a.Value.Any().(error); ok {
 				errorAttrs := func(err error) []slog.Attr {
-					attrs := []slog.Attr{
-						slog.String("message", err.Error()),
-					}
-					attrs = append(attrs, linkoerr.Attrs(err)...)
+					attrs := []slog.Attr{slog.String("message", strings.ToLower(err.Error()))}
+					attrs = append(
+						attrs,
+						linkoerr.Attrs(err)...,
+					)
 					if stackErr, ok := errors.AsType[stackTracer](err); ok {
 						attrs = append(
 							attrs,
