@@ -10,4 +10,4 @@ build:
 
 dev: build
 	rm -f ./linko.access.log
-	LINKO_LOG_FILE=linko.access.log ENV=development ./linko
+	LINKO_LOG_FILE=linko.access.log OTEL_EXPORTER_OTLP_TRACES_INSECURE=true ENV=development ./linko
