@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -29,7 +30,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			httpError(r.Context(), w, errors.New("Unauthorized"), http.StatusUnauthorized)
 			return
 		}
-		ok, err := s.validatePassword(password, stored)
+		ok, err := s.validatePassword(r.Context(), password, stored)
 		if err != nil {
 			httpError(r.Context(), w, fmt.Errorf("Internal Server Error: %w", err), http.StatusInternalServerError)
 			return
@@ -45,7 +46,9 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) validatePassword(password, stored string) (bool, error) {
+func (s *server) validatePassword(requestCtx context.Context, password, stored string) (bool, error) {
+	_, span := tracer.Start(requestCtx, "auth.validate_password")
+	defer span.End()
 	err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password))
 	if err == bcrypt.ErrMismatchedHashAndPassword {
 		return false, nil
